@@ -1,0 +1,11 @@
+# Ignorer l'environnement virtuel
+.venv/
+venv/
+env/
+
+# Ignorer les fichiers cache de Python
+__pycache__/
+*.pyc
+
+# Ignorer les fichiers systèmes Mac/Windows
+.DS_Store
