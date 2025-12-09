@@ -79,7 +79,7 @@ col3.metric("Utilisateurs Visés", df_filtered['User'].nunique())
 
 st.markdown("---")
 
-# --- 6. GRAPHIQUES (Mise en page 2x2) ---
+# --- 6. GRAPHIQUES ---
 st.subheader("Analyses visuelles")
 
 # --- PREMIÈRE LIGNE ---
@@ -96,27 +96,44 @@ with row1_col1:
 with row1_col2:
     st.caption("🏆 Top 10 IPs Sources")
     top_ips = df_filtered['SourceIP'].value_counts().head(10)
-    st.bar_chart(top_ips)
+    # AJOUT : horizontal=True pour mieux lire les IPs
+    st.bar_chart(top_ips, horizontal=True)
 
 # --- DEUXIÈME LIGNE ---
 row2_col1, row2_col2 = st.columns(2)
 
 with row2_col1:
-    st.caption("🍕 Répartition des types d'événements (EventId)")
+    st.caption("🍕 Répartition des types d'événements")
     
-    # Préparation des données pour le camembert
     event_counts = df_filtered['EventId'].value_counts()
     
-    # Création du graphique avec Matplotlib
-    fig, ax = plt.subplots()
-    ax.pie(event_counts, labels=event_counts.index, autopct='%1.1f%%', startangle=90)
-    ax.axis('equal')  # Pour que le camembert soit bien rond
+    # Correction du chevauchement : Légende séparée
+    fig, ax = plt.subplots(figsize=(5, 5))
     
-    # Affichage dans Streamlit
+    # On dessine le camembert SANS labels sur le graphique (labels=None)
+    wedges, texts, autotexts = ax.pie(
+        event_counts, 
+        labels=None,  # On enlève le texte qui se chevauche
+        autopct='%1.1f%%', 
+        startangle=90,
+        textprops={'fontsize': 10}
+    )
+    
+    ax.axis('equal')
+    
+    # On ajoute une légende propre sur le côté
+    ax.legend(
+        wedges, 
+        event_counts.index,
+        title="Events",
+        loc="center left",
+        bbox_to_anchor=(1, 0, 0.5, 1) # Pousse la légende vers la droite
+    )
+    
     st.pyplot(fig)
 
 with row2_col2:
     st.caption("👤 Top 10 Utilisateurs tentés")
-    # On enlève les valeurs nulles (car il y a beaucoup de lignes sans user)
     top_users = df_filtered['User'].dropna().value_counts().head(10)
-    st.bar_chart(top_users)
+    # AJOUT : horizontal=True pour mieux lire les noms
+    st.bar_chart(top_users, horizontal=True)
