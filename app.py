@@ -107,27 +107,32 @@ with row2_col1:
     
     event_counts = df_filtered['EventId'].value_counts()
     
-    # Correction du chevauchement : Légende séparée
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(6, 4)) # J'ai ajusté la taille
     
-    # On dessine le camembert SANS labels sur le graphique (labels=None)
+    # ASTUCE : Une petite fonction pour masquer les % trop petits (< 5%)
+    def autopct_clean(pct):
+        return ('%1.1f%%' % pct) if pct > 5 else ''
+    
     wedges, texts, autotexts = ax.pie(
         event_counts, 
-        labels=None,  # On enlève le texte qui se chevauche
-        autopct='%1.1f%%', 
+        labels=None,          # Pas de nom sur le camembert
+        autopct=autopct_clean, # On utilise notre filtre intelligent
         startangle=90,
-        textprops={'fontsize': 10}
+        textprops={'fontsize': 9, 'color': 'white'} # Texte en blanc si ton fond est foncé, ou 'black'
     )
+    
+    # Pour s'assurer que le texte des % est bien lisible (noir par défaut)
+    plt.setp(autotexts, size=9, weight="bold", color="black")
     
     ax.axis('equal')
     
-    # On ajoute une légende propre sur le côté
+    # Légende déplacée encore plus à droite pour éviter tout contact
     ax.legend(
         wedges, 
         event_counts.index,
-        title="Events",
+        title="Type d'Event",
         loc="center left",
-        bbox_to_anchor=(1, 0, 0.5, 1) # Pousse la légende vers la droite
+        bbox_to_anchor=(1, 0, 0.5, 1) # Décale la légende vers l'extérieur
     )
     
     st.pyplot(fig)
