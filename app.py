@@ -11,23 +11,56 @@ st.set_page_config(
 
 st.title("Dashboard de surveillance SSH")
 
-# --- 2. ETL & CACHE ---
+# --- 2. ETL & CACHE (Modifié pour accepter un fichier variable) ---
 @st.cache_data
-def load_data():
-    df = pd.read_csv('dataset_ssh.csv')
+def load_data(file_source):
+    # file_source peut être un chemin (str) ou un fichier uploadé (buffer)
+    df = pd.read_csv(file_source)
+    
+    # On vérifie si les colonnes critiques existent, sinon on arrête
+    required_cols = ['Timestamp', 'EventId', 'SourceIP']
+    if not all(col in df.columns for col in required_cols):
+        return None # Retourne rien si le format n'est pas bon
+
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     return df
 
+# --- 3. SIDEBAR : IMPORT & FILTRES ---
+with st.sidebar:
+    st.header("Données & Filtres")
+    
+    # --- BONUS : CHARGEMENT DE FICHIER ---
+    uploaded_file = st.file_uploader("📂 Charger un autre log (CSV)", type="csv")
+    
+    st.markdown("---")
+
+# --- 4. CHARGEMENT DES DONNÉES ---
+# Logique : Si un fichier est uploadé, on l'utilise. Sinon, on prend celui par défaut.
+if uploaded_file is not None:
+    data_source = uploaded_file
+    source_name = "Fichier utilisateur"
+else:
+    data_source = 'dataset_ssh.csv'
+    source_name = "Jeu de données Démo"
+
+# Chargement
 try:
-    df = load_data()
+    df = load_data(data_source)
+    
+    # Vérification du format
+    if df is None:
+        st.error("❌ Le fichier uploadé n'a pas les colonnes requises (Timestamp, EventId, SourceIP).")
+        st.stop()
+        
+    st.success(f"Données chargées : {source_name}")
+
 except FileNotFoundError:
-    st.error("Erreur : Le fichier 'dataset_ssh.csv' est introuvable.")
+    st.error("Erreur : Le fichier de démo 'dataset_ssh.csv' est introuvable.")
     st.stop()
 
-# --- 3. SIDEBAR & FILTRES ---
-with st.sidebar:
-    st.header("Filtres")
 
+# --- SUITE DES FILTRES (Maintenant qu'on a le df) ---
+with st.sidebar:
     # Filtre Date
     min_date = df['Timestamp'].min().date()
     max_date = df['Timestamp'].max().date()
@@ -39,8 +72,6 @@ with st.sidebar:
         max_value=max_date
     )
 
-    st.markdown("---")
-
     # Filtres EventId et IPs
     event_options = df['EventId'].unique().tolist()
     event_options.insert(0, "Tous")
@@ -49,7 +80,8 @@ with st.sidebar:
     ip_options = sorted(df['SourceIP'].dropna().unique().tolist())
     selected_ips = st.multiselect("IPs spécifiques :", ip_options)
 
-# --- 4. LOGIQUE DE FILTRAGE ---
+
+# --- 5. LOGIQUE DE FILTRAGE ---
 df_filtered = df.copy()
 
 # Filtre Date
@@ -70,8 +102,8 @@ if df_filtered.empty:
     st.warning("Aucune donnée ne correspond à vos filtres.")
     st.stop()
 
-# --- 5. KPIs ---
-st.subheader("Statistiques Globales")
+# --- 6. KPIs ---
+st.subheader(f"Statistiques Globales ({source_name})")
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Événements", len(df_filtered))
 col2.metric("IPs Uniques", df_filtered['SourceIP'].nunique())
@@ -79,10 +111,10 @@ col3.metric("Utilisateurs Visés", df_filtered['User'].nunique())
 
 st.markdown("---")
 
-# --- 6. GRAPHIQUES ---
+# --- 7. GRAPHIQUES ---
 st.subheader("Analyses visuelles")
 
-# --- PREMIÈRE LIGNE ---
+# LIGNE 1
 row1_col1, row1_col2 = st.columns(2)
 
 with row1_col1:
@@ -96,49 +128,38 @@ with row1_col1:
 with row1_col2:
     st.caption("🏆 Top 10 IPs Sources")
     top_ips = df_filtered['SourceIP'].value_counts().head(10)
-    # AJOUT : horizontal=True pour mieux lire les IPs
     st.bar_chart(top_ips, horizontal=True)
 
-# --- DEUXIÈME LIGNE ---
+# LIGNE 2
 row2_col1, row2_col2 = st.columns(2)
 
 with row2_col1:
     st.caption("🍕 Répartition des types d'événements")
-    
     event_counts = df_filtered['EventId'].value_counts()
     
-    fig, ax = plt.subplots(figsize=(6, 4)) # J'ai ajusté la taille
+    fig, ax = plt.subplots(figsize=(6, 4))
     
-    # ASTUCE : Une petite fonction pour masquer les % trop petits (< 5%)
     def autopct_clean(pct):
         return ('%1.1f%%' % pct) if pct > 5 else ''
     
     wedges, texts, autotexts = ax.pie(
         event_counts, 
-        labels=None,          # Pas de nom sur le camembert
-        autopct=autopct_clean, # On utilise notre filtre intelligent
+        labels=None, 
+        autopct=autopct_clean, 
         startangle=90,
-        textprops={'fontsize': 9, 'color': 'white'} # Texte en blanc si ton fond est foncé, ou 'black'
+        textprops={'fontsize': 9, 'color': 'white'}
     )
-    
-    # Pour s'assurer que le texte des % est bien lisible (noir par défaut)
     plt.setp(autotexts, size=9, weight="bold", color="black")
-    
     ax.axis('equal')
     
-    # Légende déplacée encore plus à droite pour éviter tout contact
-    ax.legend(
-        wedges, 
-        event_counts.index,
-        title="Type d'Event",
-        loc="center left",
-        bbox_to_anchor=(1, 0, 0.5, 1) # Décale la légende vers l'extérieur
-    )
-    
+    ax.legend(wedges, event_counts.index, title="Type d'Event", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
     st.pyplot(fig)
 
 with row2_col2:
     st.caption("👤 Top 10 Utilisateurs tentés")
     top_users = df_filtered['User'].dropna().value_counts().head(10)
-    # AJOUT : horizontal=True pour mieux lire les noms
     st.bar_chart(top_users, horizontal=True)
+
+# --- 8. APERÇU DES DONNÉES ---
+with st.expander("Voir les données brutes"):
+    st.dataframe(df_filtered)
