@@ -28,93 +28,95 @@ except FileNotFoundError:
 with st.sidebar:
     st.header("Filtres")
 
-    # --- NOUVEAU : Filtre par Date (Période) ---
-    # On cherche la date min et max dans le fichier pour configurer le widget
+    # Filtre Date
     min_date = df['Timestamp'].min().date()
     max_date = df['Timestamp'].max().date()
-
-    # Le widget renvoie un tuple (date_debut, date_fin)
+    
     date_range = st.date_input(
-        "Sélectionner une période",
-        value=(min_date, max_date), # Valeurs par défaut
+        "Période",
+        value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date
     )
 
     st.markdown("---")
 
-    # --- Filtre EventId ---
+    # Filtres EventId et IPs
     event_options = df['EventId'].unique().tolist()
     event_options.insert(0, "Tous")
-    selected_event = st.selectbox("Type d'événement (EventId) :", event_options)
+    selected_event = st.selectbox("Type d'événement :", event_options)
 
-    # --- Filtre IPs ---
     ip_options = sorted(df['SourceIP'].dropna().unique().tolist())
     selected_ips = st.multiselect("IPs spécifiques :", ip_options)
-
 
 # --- 4. LOGIQUE DE FILTRAGE ---
 df_filtered = df.copy()
 
-# A. Filtre par Date
-# On vérifie que l'utilisateur a bien sélectionné une date de début ET de fin
+# Filtre Date
 if len(date_range) == 2:
     start_date, end_date = date_range
-    # On filtre : on ne garde que ce qui est >= debut ET <= fin
-    # .dt.date est important pour comparer des jours et pas des heures précises
     mask = (df_filtered['Timestamp'].dt.date >= start_date) & (df_filtered['Timestamp'].dt.date <= end_date)
     df_filtered = df_filtered[mask]
 
-# B. Filtre EventId
+# Filtre EventId
 if selected_event != "Tous":
     df_filtered = df_filtered[df_filtered['EventId'] == selected_event]
 
-# C. Filtre IPs
+# Filtre IPs
 if selected_ips:
     df_filtered = df_filtered[df_filtered['SourceIP'].isin(selected_ips)]
 
-
-# --- 5. FEEDBACK UTILISATEUR ---
 if df_filtered.empty:
-    st.warning("Aucune donnée ne correspond à vos filtres actuels.")
+    st.warning("Aucune donnée ne correspond à vos filtres.")
     st.stop()
 
-
-# --- 6. INDICATEURS CLÉS (KPIs) ---
-st.subheader(f"Statistiques (Période du {date_range[0]} au {date_range[1] if len(date_range)>1 else '...'})")
-
-total_events = len(df_filtered)
-unique_ips = df_filtered['SourceIP'].nunique()
-unique_users = df_filtered['User'].nunique()
-
+# --- 5. KPIs ---
+st.subheader("Statistiques Globales")
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Événements", total_events)
-col2.metric("IPs Uniques", unique_ips)
-col3.metric("Utilisateurs Visés", unique_users)
+col1.metric("Total Événements", len(df_filtered))
+col2.metric("IPs Uniques", df_filtered['SourceIP'].nunique())
+col3.metric("Utilisateurs Visés", df_filtered['User'].nunique())
 
 st.markdown("---")
 
-# --- 7. GRAPHIQUES ---
+# --- 6. GRAPHIQUES (Mise en page 2x2) ---
 st.subheader("Analyses visuelles")
 
-chart_col1, chart_col2 = st.columns(2)
+# --- PREMIÈRE LIGNE ---
+row1_col1, row1_col2 = st.columns(2)
 
-# --- GRAPHIQUE 1 : TOP IPs ---
-with chart_col1:
-    st.caption("Top 10 des adresses IP")
-    top_ips = df_filtered['SourceIP'].value_counts().head(10)
-    st.bar_chart(top_ips)
-
-# --- GRAPHIQUE 2 : Évolution Temporelle ---
-with chart_col2:
-    st.caption("Volume d'attaques par heure")
+with row1_col1:
+    st.caption("📈 Volume d'attaques par heure")
     if not df_filtered['Timestamp'].isnull().all():
-        # Le graphique va s'adapter automatiquement aux dates filtrées !
         time_data = df_filtered.set_index('Timestamp').resample('h').size()
         st.line_chart(time_data)
     else:
-        st.info("Pas assez de données temporelles.")
+        st.info("Données temporelles insuffisantes.")
 
-# --- 8. APERÇU DES DONNÉES ---
-with st.expander("Voir les données filtrées"):
-    st.dataframe(df_filtered)
+with row1_col2:
+    st.caption("🏆 Top 10 IPs Sources")
+    top_ips = df_filtered['SourceIP'].value_counts().head(10)
+    st.bar_chart(top_ips)
+
+# --- DEUXIÈME LIGNE ---
+row2_col1, row2_col2 = st.columns(2)
+
+with row2_col1:
+    st.caption("🍕 Répartition des types d'événements (EventId)")
+    
+    # Préparation des données pour le camembert
+    event_counts = df_filtered['EventId'].value_counts()
+    
+    # Création du graphique avec Matplotlib
+    fig, ax = plt.subplots()
+    ax.pie(event_counts, labels=event_counts.index, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')  # Pour que le camembert soit bien rond
+    
+    # Affichage dans Streamlit
+    st.pyplot(fig)
+
+with row2_col2:
+    st.caption("👤 Top 10 Utilisateurs tentés")
+    # On enlève les valeurs nulles (car il y a beaucoup de lignes sans user)
+    top_users = df_filtered['User'].dropna().value_counts().head(10)
+    st.bar_chart(top_users)
