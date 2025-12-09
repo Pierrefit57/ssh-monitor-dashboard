@@ -24,47 +24,64 @@ except FileNotFoundError:
     st.error("Erreur : Le fichier 'dataset_ssh.csv' est introuvable.")
     st.stop()
 
-# --- 3. SIDEBAR & FILTRES (C'est ici que ça change !) ---
+# --- 3. SIDEBAR & FILTRES ---
 with st.sidebar:
     st.header("Filtres")
 
-    # --- Filtre 1 : EventId (Selectbox) ---
-    # On récupère la liste unique des EventId
-    event_options = df['EventId'].unique().tolist()
-    # On ajoute une option 'Tous' au début pour pouvoir tout voir
-    event_options.insert(0, "Tous")
-    
-    selected_event = st.selectbox("Sélectionner un EventId :", event_options)
+    # --- NOUVEAU : Filtre par Date (Période) ---
+    # On cherche la date min et max dans le fichier pour configurer le widget
+    min_date = df['Timestamp'].min().date()
+    max_date = df['Timestamp'].max().date()
 
-    # --- Filtre 2 : SourceIP (Multiselect) ---
-    # On récupère les IPs uniques, triées
+    # Le widget renvoie un tuple (date_debut, date_fin)
+    date_range = st.date_input(
+        "Sélectionner une période",
+        value=(min_date, max_date), # Valeurs par défaut
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    st.markdown("---")
+
+    # --- Filtre EventId ---
+    event_options = df['EventId'].unique().tolist()
+    event_options.insert(0, "Tous")
+    selected_event = st.selectbox("Type d'événement (EventId) :", event_options)
+
+    # --- Filtre IPs ---
     ip_options = sorted(df['SourceIP'].dropna().unique().tolist())
-    selected_ips = st.multiselect("Sélectionner des IPs spécifiques :", ip_options)
+    selected_ips = st.multiselect("IPs spécifiques :", ip_options)
 
 
 # --- 4. LOGIQUE DE FILTRAGE ---
-# On part du DataFrame complet
 df_filtered = df.copy()
 
-# Application du filtre EventId
+# A. Filtre par Date
+# On vérifie que l'utilisateur a bien sélectionné une date de début ET de fin
+if len(date_range) == 2:
+    start_date, end_date = date_range
+    # On filtre : on ne garde que ce qui est >= debut ET <= fin
+    # .dt.date est important pour comparer des jours et pas des heures précises
+    mask = (df_filtered['Timestamp'].dt.date >= start_date) & (df_filtered['Timestamp'].dt.date <= end_date)
+    df_filtered = df_filtered[mask]
+
+# B. Filtre EventId
 if selected_event != "Tous":
     df_filtered = df_filtered[df_filtered['EventId'] == selected_event]
 
-# Application du filtre IPs (seulement si l'utilisateur a sélectionné quelque chose)
+# C. Filtre IPs
 if selected_ips:
     df_filtered = df_filtered[df_filtered['SourceIP'].isin(selected_ips)]
 
 
 # --- 5. FEEDBACK UTILISATEUR ---
-# Si le filtrage ne donne rien, on arrête tout et on prévient
 if df_filtered.empty:
     st.warning("Aucune donnée ne correspond à vos filtres actuels.")
-    st.stop() # Arrête l'exécution du script ici pour éviter les erreurs graphiques
+    st.stop()
 
 
 # --- 6. INDICATEURS CLÉS (KPIs) ---
-# ATTENTION : On utilise maintenant df_filtered !
-st.subheader("Indicateurs Clés (Filtrés)")
+st.subheader(f"Statistiques (Période du {date_range[0]} au {date_range[1] if len(date_range)>1 else '...'})")
 
 total_events = len(df_filtered)
 unique_ips = df_filtered['SourceIP'].nunique()
@@ -84,7 +101,7 @@ chart_col1, chart_col2 = st.columns(2)
 
 # --- GRAPHIQUE 1 : TOP IPs ---
 with chart_col1:
-    st.caption("Top 10 des adresses IP (sur la sélection)")
+    st.caption("Top 10 des adresses IP")
     top_ips = df_filtered['SourceIP'].value_counts().head(10)
     st.bar_chart(top_ips)
 
@@ -92,10 +109,11 @@ with chart_col1:
 with chart_col2:
     st.caption("Volume d'attaques par heure")
     if not df_filtered['Timestamp'].isnull().all():
+        # Le graphique va s'adapter automatiquement aux dates filtrées !
         time_data = df_filtered.set_index('Timestamp').resample('h').size()
         st.line_chart(time_data)
     else:
-        st.info("Pas assez de données temporelles pour afficher le graphique.")
+        st.info("Pas assez de données temporelles.")
 
 # --- 8. APERÇU DES DONNÉES ---
 with st.expander("Voir les données filtrées"):
